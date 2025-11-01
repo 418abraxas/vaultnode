@@ -6,6 +6,7 @@ COPY package.json ./
 # Add prisma, jwt, and types here if missing
 RUN npm install --no-audit --no-fund \
     @prisma/client prisma jsonwebtoken @types/jsonwebtoken
+RUN npm install --no-audit --no-fund yaml
 
 # ---------- Stage 2: build ----------
 FROM node:20-alpine AS build
