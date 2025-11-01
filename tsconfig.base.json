@@ -1,0 +1,19 @@
+{
+  "name": "vaultnode",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "apps/api",
+    "apps/web",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run -w apps/api build",
+    "dev": "npm run -w apps/api dev",
+    "migrate": "npm run -w apps/api migrate",
+    "generate": "npm run -w apps/api generate",
+    "start": "npm run -w apps/api start",
+    "lint": "npm run -w apps/api lint",
+    "seed": "npm run -w apps/api seed"
+  }
+}

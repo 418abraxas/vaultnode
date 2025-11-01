@@ -1,0 +1,9 @@
+{
+  "build": { "builder": "NIXPACKS" },
+  "deploy": {
+    "numReplicas": 1,
+    "startCommand": "node apps/api/dist/index.js",
+    "healthcheckPath": "/healthz",
+    "restartPolicyType": "ON_FAILURE"
+  }
+}

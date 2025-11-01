@@ -1,0 +1,140 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model VaultNode {
+  id               Int       @id @default(autoincrement())
+  node_id          String    @unique
+  title            String
+  author           String
+  contact          String?
+  phase            String    @default("draft") // draft | review | sealed
+  type             String    @default("framework")
+  tags             String[]  // text[]
+  consent_tier     String
+  date_created     DateTime  @default(now())
+  date_sealed      DateTime?
+  provenance       String?
+  description      String?
+  version          String    @default("1.0.0")
+  status           String    @default("active")
+  content          String?   // Large inline text
+  seal_hash        String?
+  witnesses        Json?
+  resonance_vector Float[]   // double precision[]
+  metadata         Json?
+
+  versions         VaultNodeVersion[]
+  bridgesFrom      BridgeMap[] @relation("FromNode")
+  bridgesTo        BridgeMap[] @relation("ToNode")
+  logs             Log[]
+
+  @@index([node_id])
+  @@index([title])
+}
+
+model VaultNodeVersion {
+  id            Int       @id @default(autoincrement())
+  node_id       String
+  node          VaultNode @relation(fields: [node_id], references: [node_id], onDelete: Cascade)
+  version_label String
+  content       String
+  checksum      String?
+  sealed        Boolean   @default(false)
+  created_at    DateTime  @default(now())
+
+  @@index([node_id])
+  @@unique([node_id, version_label])
+}
+
+model BridgeMap {
+  id                Int       @id @default(autoincrement())
+  node_id           String
+  target_node       String
+  relationship_type String
+  interlink_key     String?
+  sigma             Float?
+  eta               Float?
+  phi               Float?
+  delta_hv_pred     Float?
+  e_deg_risk        Float?
+  gate_sequence     String[]  // text[]
+  status            String    @default("pending") // pending|approved|refused
+  decision          Json?
+  created_at        DateTime  @default(now())
+
+  from VaultNode @relation("FromNode", fields: [node_id], references: [node_id])
+  to   VaultNode @relation("ToNode", fields: [target_node], references: [node_id])
+
+  @@index([node_id])
+  @@index([target_node])
+}
+
+model MirrorCheck {
+  id              Int       @id @default(autoincrement())
+  node_a          String
+  node_b          String
+  policy          String
+  sigma           Float?
+  eta             Float?
+  phi             Float?
+  alignment_score Float?
+  notes           String?
+  report          Json?
+  created_at      DateTime  @default(now())
+
+  @@index([node_a, node_b])
+}
+
+model Witness {
+  id            Int      @id @default(autoincrement())
+  witness_id    String   @unique
+  name          String
+  contact       String?
+  qualifications String[]
+  consent_tier  String
+}
+
+model PreSealChecklist {
+  id                Int      @id @default(autoincrement())
+  node_id           String
+  section_a         Json?
+  section_b         Json?
+  section_c         Json?
+  section_d         Json?
+  section_e         Json?
+  outcome           String  // approve | refuse | escalate
+  witness_id        String?
+  witness_signature String?
+  created_at        DateTime @default(now())
+
+  @@index([node_id])
+}
+
+model Log {
+  id         Int      @id @default(autoincrement())
+  node_id    String?
+  log_type   String   // intake | seal | audit | mirror | bridge | error
+  payload    Json?
+  created_at DateTime @default(now())
+
+  @@index([node_id])
+}
+
+model Refusal {
+  id                Int      @id @default(autoincrement())
+  refusal_id        String   @unique
+  a                 String?
+  b                 String?
+  failure_reasons   String[]
+  metrics_at_refusal Json?
+  recommendation    Json?
+  ethics_note       String?
+  logged_by         String?
+  timestamp         DateTime @default(now())
+}

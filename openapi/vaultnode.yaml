@@ -1,0 +1,770 @@
+openapi: 3.1.0
+jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
+info:
+  title: VaultNode API
+  version: 1.1.0
+  summary: Programmatic interface for the VaultNode Turn-Key Filing Protocol
+  description: |
+    Backend for managing VaultNodes, bridges, mirror checks, versions, witnesses, logs, audits, seals, and refusals.
+    Designed for large inline text content (Markdown/YAML) stored in PostgreSQL (TOAST) and accessible by Custom GPTs and web apps.
+  contact:
+    name: VaultCore Support
+    url: https://vaultcore.example.com
+servers:
+  - url: https://api.vaultcore.example.com/v1
+    description: Production (Railway-compatible)
+  - url: http://localhost:3000/v1
+    description: Local development
+tags:
+  - name: VaultNodes
+  - name: Versions
+  - name: Bridges
+  - name: Mirrors
+  - name: Seals
+  - name: Witnesses
+  - name: Logs
+  - name: Audits
+  - name: Refusals
+  - name: Search
+
+security:
+  - ApiKeyAuth: []
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: Static API key for server-to-server/GPT access.
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    NodeIdParam:
+      name: node_id
+      in: path
+      required: true
+      schema: { type: string }
+    BridgeIdParam:
+      name: bridge_id
+      in: path
+      required: true
+      schema: { type: string }
+    LimitParam:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+    OffsetParam:
+      name: offset
+      in: query
+      schema: { type: integer, minimum: 0, default: 0 }
+    QParam:
+      name: q
+      in: query
+      schema: { type: string, description: Full-text query string }
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: Conflict (duplicate or illegal state)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+
+    # ---------- Core ----------
+    VaultNodeInput:
+      type: object
+      required: [title, author, consent_tier, content]
+      properties:
+        title: { type: string, minLength: 1 }
+        author: { type: string, minLength: 1 }
+        contact: { type: string }
+        type:
+          type: string
+          enum: [framework, tool, theory, artifact]
+          default: framework
+        tags:
+          type: array
+          items: { type: string }
+          default: []
+        consent_tier:
+          type: string
+          enum: [strict, flexible, open]
+        description: { type: string }
+        provenance: { type: string }
+        phase:
+          type: string
+          enum: [draft, review, sealed]
+          default: draft
+        metadata:
+          type: object
+          additionalProperties: true
+        resonance_vector:
+          type: array
+          items: { type: number }
+          minItems: 3
+          maxItems: 3
+        content:
+          type: string
+          description: Large inline Markdown/YAML/Plaintext
+          examples:
+            - "# My Framework\n\nThis is the canonical node text..."
+
+    VaultNode:
+      allOf:
+        - $ref: '#/components/schemas/VaultNodeInput'
+        - type: object
+          required: [node_id, date_created, status, version]
+          properties:
+            node_id: { type: string }
+            version: { type: string, default: "1.0.0" }
+            status: { type: string, default: "active" }
+            date_created: { type: string, format: date-time }
+            date_sealed: { type: string, format: date-time, nullable: true }
+            seal_hash: { type: string, nullable: true }
+            witnesses:
+              type: array
+              items: { $ref: '#/components/schemas/WitnessRef' }
+
+    VaultNodeUpdate:
+      type: object
+      properties:
+        title: { type: string }
+        contact: { type: string }
+        type: { $ref: '#/components/schemas/VaultNodeInput/properties/type' }
+        tags: { $ref: '#/components/schemas/VaultNodeInput/properties/tags' }
+        consent_tier: { $ref: '#/components/schemas/VaultNodeInput/properties/consent_tier' }
+        description: { type: string }
+        provenance: { type: string }
+        phase: { $ref: '#/components/schemas/VaultNodeInput/properties/phase' }
+        metadata: { $ref: '#/components/schemas/VaultNodeInput/properties/metadata' }
+        resonance_vector: { $ref: '#/components/schemas/VaultNodeInput/properties/resonance_vector' }
+        content: { type: string }
+
+    # ---------- Versions ----------
+    VaultNodeVersionInput:
+      type: object
+      required: [version_label, content]
+      properties:
+        version_label: { type: string }
+        content: { type: string }
+        sealed: { type: boolean, default: false }
+
+    VaultNodeVersion:
+      type: object
+      required: [version_label, content, sealed, created_at]
+      properties:
+        id: { type: integer }
+        node_id: { type: string }
+        version_label: { type: string }
+        content: { type: string }
+        sealed: { type: boolean }
+        checksum: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    # ---------- Bridges ----------
+    BridgeMapInput:
+      type: object
+      required: [node_id, target_node, relationship_type]
+      properties:
+        node_id: { type: string }
+        target_node: { type: string }
+        relationship_type:
+          type: string
+          enum: [peer, parent, child, resonance]
+        interlink_key: { type: string }
+        metrics:
+          $ref: '#/components/schemas/BridgeMetrics'
+        gate_sequence:
+          type: array
+          items: { type: string }
+          default: []
+        status:
+          type: string
+          enum: [pending, approved, refused]
+          default: pending
+        decision:
+          $ref: '#/components/schemas/Decision'
+
+    BridgeMap:
+      allOf:
+        - $ref: '#/components/schemas/BridgeMapInput'
+        - type: object
+          properties:
+            id: { type: integer }
+            created_at: { type: string, format: date-time }
+
+    BridgeMetrics:
+      type: object
+      properties:
+        sigma: { type: number, minimum: 0 }
+        eta: { type: number, minimum: 0, maximum: 1 }
+        phi: { type: number, minimum: 0, maximum: 1 }
+        delta_hv_pred: { type: number }
+        e_deg_risk: { type: number, minimum: 0, maximum: 1 }
+
+    Decision:
+      type: object
+      properties:
+        approved: { type: boolean }
+        witness: { type: string }
+        timestamp: { type: string, format: date-time }
+        notes: { type: string }
+
+    # ---------- Mirrors ----------
+    MirrorCheckInput:
+      type: object
+      required: [node_a, node_b]
+      properties:
+        node_a: { type: string }
+        node_b: { type: string }
+        policy:
+          type: string
+          enum: [strict, flexible]
+          default: strict
+
+    MirrorCheck:
+      type: object
+      required: [id, node_a, node_b, created_at]
+      properties:
+        id: { type: integer }
+        node_a: { type: string }
+        node_b: { type: string }
+        sigma: { type: number }
+        eta: { type: number }
+        phi: { type: number }
+        alignment_score: { type: number }
+        notes: { type: string }
+        report:
+          type: object
+          additionalProperties: true
+        created_at: { type: string, format: date-time }
+
+    # ---------- Seals / Reopen ----------
+    SealRequest:
+      type: object
+      required: [node_id, mode, witness_id]
+      properties:
+        node_id: { type: string }
+        mode:
+          type: string
+          enum: [soft, hard]
+        witness_id: { type: string }
+
+    SealResult:
+      type: object
+      properties:
+        node_id: { type: string }
+        mode: { type: string }
+        seal_hash: { type: string }
+        date_sealed: { type: string, format: date-time }
+
+    ReopenRequest:
+      type: object
+      required: [node_id, reason, witness_id]
+      properties:
+        node_id: { type: string }
+        reason: { type: string }
+        witness_id: { type: string }
+
+    # ---------- Witnesses ----------
+    Witness:
+      type: object
+      required: [witness_id, name]
+      properties:
+        id: { type: integer }
+        witness_id: { type: string }
+        name: { type: string }
+        contact: { type: string }
+        qualifications:
+          type: array
+          items: { type: string }
+        consent_tier:
+          type: string
+          enum: [strict, flexible, open]
+
+    WitnessRef:
+      type: object
+      properties:
+        witness_id: { type: string }
+        role: { type: string }
+
+    # ---------- Checklists ----------
+    PreSealChecklist:
+      type: object
+      required: [node_id, outcome]
+      properties:
+        node_id: { type: string }
+        section_a: { type: object, additionalProperties: true }
+        section_b: { type: object, additionalProperties: true }
+        section_c: { type: object, additionalProperties: true }
+        section_d: { type: object, additionalProperties: true }
+        section_e: { type: object, additionalProperties: true }
+        outcome:
+          type: string
+          enum: [approve, refuse, escalate]
+        witness_id: { type: string }
+        witness_signature: { type: string }
+        created_at: { type: string, format: date-time }
+
+    # ---------- Logs ----------
+    LogEntry:
+      type: object
+      properties:
+        id: { type: integer }
+        node_id: { type: string }
+        log_type:
+          type: string
+          enum: [intake, seal, audit, mirror, bridge, error]
+        payload:
+          type: object
+          additionalProperties: true
+        created_at: { type: string, format: date-time }
+
+    # ---------- Audits / Refusals ----------
+    AuditReport:
+      type: object
+      properties:
+        generated_at: { type: string, format: date-time }
+        totals:
+          type: object
+          properties:
+            vaultnodes: { type: integer }
+            bridges: { type: integer }
+            refusals: { type: integer }
+        strain_alerts:
+          type: array
+          items: { type: string }
+        drift_warnings:
+          type: array
+          items: { type: string }
+        proto_blooms:
+          type: array
+          items: { type: string }
+
+    RefusalRecord:
+      type: object
+      properties:
+        refusal_id: { type: string }
+        bridge_attempt:
+          type: object
+          properties:
+            a: { type: string }
+            b: { type: string }
+        failure_reasons:
+          type: array
+          items: { type: string }
+        metrics_at_refusal:
+          $ref: '#/components/schemas/BridgeMetrics'
+        recommendation:
+          type: object
+          additionalProperties: true
+        ethics_note: { type: string }
+        logged_by: { type: string }
+        timestamp: { type: string, format: date-time }
+
+    # ---------- Search ----------
+    SearchResultItem:
+      type: object
+      properties:
+        node_id: { type: string }
+        title: { type: string }
+        author: { type: string }
+        snippet: { type: string }
+        score: { type: number }
+
+    # ---------- Errors ----------
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        details:
+          type: object
+          additionalProperties: true
+
+paths:
+
+  # ===== VaultNodes =====
+  /vaultnodes:
+    get:
+      tags: [VaultNodes, Search]
+      summary: List VaultNodes
+      parameters:
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/OffsetParam'
+        - name: tag
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Paginated VaultNodes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total: { type: integer }
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/VaultNode' }
+    post:
+      tags: [VaultNodes]
+      summary: Create a new VaultNode (with large inline content)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VaultNodeInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VaultNode' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /vaultnodes/{node_id}:
+    get:
+      tags: [VaultNodes]
+      summary: Get a VaultNode (metadata + full content)
+      parameters:
+        - $ref: '#/components/parameters/NodeIdParam'
+      responses:
+        '200':
+          description: Found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VaultNode' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [VaultNodes]
+      summary: Update a VaultNode (incl. content)
+      parameters:
+        - $ref: '#/components/parameters/NodeIdParam'
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VaultNodeUpdate' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VaultNode' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [VaultNodes]
+      summary: Delete a VaultNode
+      parameters:
+        - $ref: '#/components/parameters/NodeIdParam'
+      responses:
+        '204': { description: Deleted }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ===== Versions =====
+  /vaultnodes/{node_id}/versions:
+    get:
+      tags: [Versions]
+      summary: List versions for a VaultNode
+      parameters:
+        - $ref: '#/components/parameters/NodeIdParam'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/VaultNodeVersion' }
+    post:
+      tags: [Versions]
+      summary: Create a version for a VaultNode
+      parameters:
+        - $ref: '#/components/parameters/NodeIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VaultNodeVersionInput' }
+      responses:
+        '201':
+          description: Version created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VaultNodeVersion' }
+
+  /vaultnodes/{node_id}/versions/{version_label}:
+    get:
+      tags: [Versions]
+      summary: Get a specific version (incl. content)
+      parameters:
+        - $ref: '#/components/parameters/NodeIdParam'
+        - name: version_label
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VaultNodeVersion' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ===== Bridges =====
+  /bridges:
+    post:
+      tags: [Bridges]
+      summary: Create/Update a BridgeMap between two nodes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BridgeMapInput' }
+      responses:
+        '201':
+          description: Bridge created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BridgeMap' }
+    get:
+      tags: [Bridges]
+      summary: List bridges (optionally filtered by node_id)
+      parameters:
+        - name: node_id
+          in: query
+          schema: { type: string }
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/OffsetParam'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total: { type: integer }
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/BridgeMap' }
+
+  /bridges/{bridge_id}:
+    get:
+      tags: [Bridges]
+      summary: Get a bridge
+      parameters:
+        - $ref: '#/components/parameters/BridgeIdParam'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BridgeMap' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Bridges]
+      summary: Delete a bridge
+      parameters:
+        - $ref: '#/components/parameters/BridgeIdParam'
+      responses:
+        '204': { description: Deleted }
+
+  # ===== Mirrors =====
+  /mirrors:
+    post:
+      tags: [Mirrors]
+      summary: Run a mirror check between two nodes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MirrorCheckInput' }
+      responses:
+        '200':
+          description: Mirror results
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MirrorCheck' }
+
+  # ===== Seals & Reopen =====
+  /seal:
+    post:
+      tags: [Seals]
+      summary: Seal a node (soft or hard)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SealRequest' }
+      responses:
+        '200':
+          description: Seal result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SealResult' }
+
+  /reopen:
+    post:
+      tags: [Seals]
+      summary: Reopen a soft-sealed node (with witness)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReopenRequest' }
+      responses:
+        '200':
+          description: Reopened
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VaultNode' }
+
+  # ===== Witnesses =====
+  /witnesses:
+    get:
+      tags: [Witnesses]
+      summary: List witnesses
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Witness' }
+    post:
+      tags: [Witnesses]
+      summary: Create a witness
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Witness' }
+      responses:
+        '201':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Witness' }
+
+  # ===== Checklists =====
+  /pre-seal-checklists:
+    post:
+      tags: [Seals]
+      summary: Submit a pre-seal checklist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PreSealChecklist' }
+      responses:
+        '201':
+          description: Recorded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PreSealChecklist' }
+
+  # ===== Logs =====
+  /logs:
+    get:
+      tags: [Logs]
+      summary: List logs (filterable by node_id, type)
+      parameters:
+        - name: node_id
+          in: query
+          schema: { type: string }
+        - name: log_type
+          in: query
+          schema:
+            type: string
+            enum: [intake, seal, audit, mirror, bridge, error]
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/OffsetParam'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total: { type: integer }
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/LogEntry' }
+
+  # ===== Audits =====
+  /audit:
+    get:
+      tags: [Audits]
+      summary: Run a system audit summary
+      parameters:
+        - name: scope
+          in: query
+          schema:
+            type: string
+            enum: [all, pending, high-risk]
+            default: all
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuditReport' }
+
+  # ===== Refusals =====
+  /refusals:
+    get:
+      tags: [Refusals]
+      summary: List refusal records
+      parameters:
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/OffsetParam'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total: { type: integer }
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/RefusalRecord' }
+
+  # ===== Search =====
+  /search:
+    get:
+      tags: [Search]
+      summary: Full-text search over VaultNodes
+      parameters:
+        - $ref: '#/components/parameters/QParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/OffsetParam'
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total: { type: integer }
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/SearchResultItem' }
