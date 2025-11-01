@@ -9,9 +9,13 @@ export default fp(async (fastify) => {
   const openapi = fs.readFileSync(specPath, "utf8");
 
   await fastify.register(swagger, {
-    mode: "yaml",
-    yaml: openapi
+    mode: "static",            // ✅ current valid value
+    specification: {
+      document: openapi,       // YAML or JSON string
+      baseDir: path.dirname(specPath)
+    }
   });
+
   await fastify.register(swaggerUI, {
     routePrefix: "/docs",
     uiConfig: { docExpansion: "list", deepLinking: true }
