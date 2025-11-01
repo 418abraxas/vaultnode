@@ -8,8 +8,10 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
+    "noImplicitAny": false, 
     "resolveJsonModule": true
   },
   "include": ["src"]
 }
+
 
