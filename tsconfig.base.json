@@ -1,7 +1,6 @@
 {
   "name": "vaultnode",
   "private": true,
-  "version": "1.0.0",
   "workspaces": [
     "apps/api",
     "apps/web",
@@ -17,3 +16,4 @@
     "seed": "npm run -w apps/api seed"
   }
 }
+
