@@ -1,12 +1,12 @@
 import Fastify from "fastify";
-import corsPlugin from "./plugins/cors";
+// import corsPlugin from "./plugins/cors";
 import swaggerPlugin from "./plugins/swagger";
 import authPlugin from "./plugins/auth";
 import rateLimitPlugin from "./plugins/rate-limit";
 import errorMiddleware from "./middleware/error";
 
 import vaultnodesRoutes from "./modules/vaultnodes/vaultnodes.route";
-import versionsRoutes from "./modules/versions/versions.route";
+// import versionsRoutes from "./modules/versions/versions.route";
 import bridgesRoutes from "./modules/bridges/bridges.route";
 import mirrorsRoutes from "./modules/mirrors/mirrors.route";
 import sealsRoutes from "./modules/seals/seals.route";
@@ -45,3 +45,4 @@ export async function buildServer() {
 
   return server;
 }
+
